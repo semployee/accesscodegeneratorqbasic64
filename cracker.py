@@ -8,12 +8,19 @@ with support for extended ASCII characters.
 import sys
 from itertools import product
 import time
+import argparse
+
+# Test / override globals (can be set via CLI)
+OVERRIDE_KMAX = None
+TEST_FAST = False
 
 # Constants from QB64 code
 PEPPER = "MijnGeheimePepper123!@#$%^&*()_+"
-HASH_TO_MATCH = "704382479557331984651638066712427985405440381425501749081891681069977400182826590685391048891489827738158569676552552862501360577289626153597999908231874424736007121207808305005710566666081"
+HASH_TO_MATCH = "70438247955733198465163806671242798540544038142550174908189168106997740018282659068539104889148982773815856967655255286250136057728962615359799990823187442473600712120780830500571[...]
+"
 
-PHI_STRING = "16180339887498948482045868343656381177203091798057628621354486227052604628189024497072072041893911374847540880753868917521266338622235369317931800607667263544333890865959395829056383226613"
+PHI_STRING = "161803398874989484820458683436563811772030917980576286213544862270526046281890244970720720418939113748475408807538689175212663386222353693179318006076672635443338908659593958290563832266[...]
+"
 
 def big_mul_array(num, multiplier):
     """Multiply a big-integer array by a single digit."""
@@ -51,23 +58,58 @@ def big_add_arrays(a, b):
     return a
 
 def big_sub_arrays(a, b):
-    """Subtract b from a (big-integer arrays)."""
+    """Subtract b from a (big-integer arrays).
+
+    This version is robust to the case where 'b' is longer than 'a' by
+    padding both arrays to the same length and returning a new list.
+    It does not mutate the input lists.
+    """
     borrow = 0
-    
-    for i in range(len(b)):
-        diff = a[i] - b[i] - borrow
+
+    # Work on local copies so we don't alter the caller's lists unexpectedly
+    a_local = a.copy()
+    b_local = b.copy()
+
+    max_len = max(len(a_local), len(b_local))
+    if len(a_local) < max_len:
+        a_local.extend([0] * (max_len - len(a_local)))
+    if len(b_local) < max_len:
+        b_local.extend([0] * (max_len - len(b_local)))
+
+    for i in range(max_len):
+        diff = a_local[i] - b_local[i] - borrow
         if diff < 0:
             diff += 10
             borrow = 1
         else:
             borrow = 0
-        a[i] = diff
-    
+        a_local[i] = diff
+
+    # If borrow remains after processing all digits, propagate across
+    # any higher-order digits (extend if necessary). This handles the
+    # unlikely case where input 'a' is numerically smaller than 'b'.
+    i = max_len
+    while borrow and i < len(a_local):
+        diff = a_local[i] - borrow
+        if diff < 0:
+            a_local[i] = diff + 10
+            borrow = 1
+        else:
+            a_local[i] = diff
+            borrow = 0
+        i += 1
+
+    # If there is still a borrow, it means a < b; represent as zero
+    # (this mimics QB64 behavior more safely for this algorithm).
+    if borrow:
+        # return zero
+        return [0]
+
     # Remove leading zeros
-    while len(a) > 1 and a[-1] == 0:
-        a.pop()
-    
-    return a
+    while len(a_local) > 1 and a_local[-1] == 0:
+        a_local.pop()
+
+    return a_local
 
 def big_mul_arrays(a, b):
     """Multiply two big-integer arrays."""
@@ -171,6 +213,7 @@ def rmodule_with_params(username, password, seed, phi_start, k_max):
             if k % 2 == 1:
                 wave = big_add_arrays(wave, current_phi)
             else:
+                # use the robust subtraction that returns a new list
                 wave = big_sub_arrays(wave, current_phi)
             
             if len(current_phi) > 250:
@@ -214,6 +257,10 @@ def generate_access_code_256(username, password, pepper):
         k_max = 500
     if k_max > 999:
         k_max = 999
+
+    # respect override for testing
+    if OVERRIDE_KMAX is not None:
+        k_max = OVERRIDE_KMAX
     
     rmodule_hash = rmodule_with_params(username, password, seed, phi_start, k_max)
     
@@ -321,9 +368,16 @@ def brute_force_crack():
     # Strategy 2: Extended ASCII (test possible byte values for the mystery character)
     print("\n[*] Strategy 2: Extended ASCII (0-255) byte values...")
     print(f"[*] Testing: Luffy + Monkey[BYTE] + D")
-    
-    for byte_val in range(256):
-        for char_pos in range(1, 10):  # Try different positions
+
+    byte_range = range(256)
+    char_pos_range = range(1, 10)
+    if TEST_FAST:
+        # reduce search space for quick testing
+        byte_range = range(32)  # printable + some control characters
+        char_pos_range = range(1, 3)
+
+    for byte_val in byte_range:
+        for char_pos in char_pos_range:  # Try different positions
             pwd = "Monkey" + chr(byte_val) + "D"
             
             attempts += 1
@@ -348,4 +402,14 @@ def brute_force_crack():
     return False
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="QB64 AccessCode brute-force tester")
+    parser.add_argument('--kmax', type=int, help='Override k_max used in generator (for testing)')
+    parser.add_argument('--test', action='store_true', help='Enable fast test mode (smaller search space)')
+    args = parser.parse_args()
+
+    if args.kmax is not None:
+        OVERRIDE_KMAX = args.kmax
+    if args.test:
+        TEST_FAST = True
+
     brute_force_crack()
