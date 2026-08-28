@@ -1,8 +1,13 @@
 ' ==============================================================
-' 256-DIGIT ACCESSCODE LOGIN VALIDATOR — GRAFISCHE VERSIE (SCREEN 12)
-' Alleen toetsenbord: Enter wisselt van veld en voert login uit
-' Hardcoded hash (plak hem uit de generator)
+' 256-DIGIT ACCESSCODE LOGIN VALIDATOR (PEPPER-VERSIE)
 ' Copyright (C) R.T.Somer
+' Oneindige loop - stopt alleen bij correcte login
+' Hardcoded hash (plak hem uit de generator)
+' Gebruikt EXACT dezelfde R-module als grafische versie
+'
+' Big-integer basisroutines gebaseerd op de BigInt-library van
+' PetesQBSite (http://www.petesqbsite.com/downloads/bigint.zip),
+' oorspronkelijk geschreven door Deus Ex Machina.
 ' ==============================================================
 
 Const PEPPER = "MijnGeheimePepper123!@#$%^&*()_+"
@@ -28,7 +33,7 @@ _MouseHide
 Color 15, 0
 Cls
 
-' Coördinaten
+' CoÃ¶rdinaten
 userX = 100: userY = 100
 passX = 100: passY = 140
 outX = 100: outY = 200
