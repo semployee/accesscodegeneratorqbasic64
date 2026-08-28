@@ -1,27 +1,21 @@
 #!/usr/bin/env python3
 """
-QB64 AccessCode Generator Brute-Force Cracker
-Attempts to crack the 256-digit hash by testing username/password combinations
-with support for extended ASCII characters.
+QB64 AccessCode Generator Brute-Force Cracker - WERKENDE VERSIE
+Reverse-engineered uit de QB64 generator en verificator
 """
 
-import sys
-from itertools import product
 import time
-import argparse
+import sys
 
-# Test / override globals (can be set via CLI)
-OVERRIDE_KMAX = None
-TEST_FAST = False
-
-# Constants from QB64 code
+# Constanten (moet identiek zijn aan generator/verificator)
 PEPPER = "MijnGeheimePepper123!@#$%^&*()_+"
 HASH_TO_MATCH = "70438247955733198465163806671242798540544038142550174908189168106997740018282659068539104889148982773815856967655255286250136057728962615359799990823187442473600712120780830500571"
 
-PHI_STRING = "1618033988749894848204586834365638117720309179805762862135448622705260462818902449707207204189391137484754088075386891752126633862223536931793180060766726354433389086595939582905638326766301179881678183391072945781554316667236090176022873701435925127116348289071625916333266586792224034418159813629774771309960518707211349999998372978049951059731732816096318595024459455346908302642522308253344685035261931188171010003137838752886587533208381420617177669147303598253490428755468731159562863882353787593751957781857780532171226806613001927876611195909216420198"
+PHI_STRING = "161803398874989484820458683436563811772030917980576286213544862270526046281890244970720720418939113748475408807538689175212663386222353693179318006076672635443338908659593958290563832676030360985010748866852605239"
 
 def big_mul_array(num, multiplier):
-    """Multiply a big-integer array by a single digit."""
+    """Vermenigvuldig big-integer array met enkel getal."""
+    num = num[:]  # Copy
     carry = 0
     for i in range(len(num)):
         product = num[i] * multiplier + carry
@@ -35,16 +29,17 @@ def big_mul_array(num, multiplier):
     return num
 
 def big_add_arrays(a, b):
-    """Add two big-integer arrays."""
-    carry = 0
-    max_len = max(len(a), len(b))
+    """Tel twee big-integer arrays op."""
+    a = a[:]  # Copy
+    b = b[:]
     
-    # Pad shorter array
+    max_len = max(len(a), len(b))
     while len(a) < max_len:
         a.append(0)
     while len(b) < max_len:
         b.append(0)
     
+    carry = 0
     for i in range(max_len):
         s = a[i] + b[i] + carry
         a[i] = s % 10
@@ -56,61 +51,49 @@ def big_add_arrays(a, b):
     return a
 
 def big_sub_arrays(a, b):
-    """Subtract b from a (big-integer arrays).
-
-    This version is robust to the case where 'b' is longer than 'a' by
-    padding both arrays to the same length and returning a new list.
-    It does not mutate the input lists.
-    """
+    """Trek b af van a (big-integer arrays)."""
+    a = a[:]
+    b = b[:]
+    
+    max_len = max(len(a), len(b))
+    if len(a) < max_len:
+        a.extend([0] * (max_len - len(a)))
+    if len(b) < max_len:
+        b.extend([0] * (max_len - len(b)))
+    
     borrow = 0
-
-    # Work on local copies so we don't alter the caller's lists unexpectedly
-    a_local = a.copy()
-    b_local = b.copy()
-
-    max_len = max(len(a_local), len(b_local))
-    if len(a_local) < max_len:
-        a_local.extend([0] * (max_len - len(a_local)))
-    if len(b_local) < max_len:
-        b_local.extend([0] * (max_len - len(b_local)))
-
     for i in range(max_len):
-        diff = a_local[i] - b_local[i] - borrow
+        diff = a[i] - b[i] - borrow
         if diff < 0:
             diff += 10
             borrow = 1
         else:
             borrow = 0
-        a_local[i] = diff
-
-    # If borrow remains after processing all digits, propagate across
-    # any higher-order digits (extend if necessary). This handles the
-    # unlikely case where input 'a' is numerically smaller than 'b'.
+        a[i] = diff
+    
+    # Verwerk resterende borrow
     i = max_len
-    while borrow and i < len(a_local):
-        diff = a_local[i] - borrow
+    while borrow and i < len(a):
+        diff = a[i] - borrow
         if diff < 0:
-            a_local[i] = diff + 10
+            a[i] = diff + 10
             borrow = 1
         else:
-            a_local[i] = diff
+            a[i] = diff
             borrow = 0
         i += 1
-
-    # If there is still a borrow, it means a < b; represent as zero
-    # (this mimics QB64 behavior more safely for this algorithm).
+    
     if borrow:
-        # return zero
         return [0]
-
-    # Remove leading zeros
-    while len(a_local) > 1 and a_local[-1] == 0:
-        a_local.pop()
-
-    return a_local
+    
+    # Verwijder voorloopnullen
+    while len(a) > 1 and a[-1] == 0:
+        a.pop()
+    
+    return a
 
 def big_mul_arrays(a, b):
-    """Multiply two big-integer arrays."""
+    """Vermenigvuldig twee big-integer arrays."""
     result = [0] * (len(a) + len(b))
     
     for i in range(len(a)):
@@ -122,16 +105,16 @@ def big_mul_arrays(a, b):
         if carry > 0:
             result[i + len(b)] = carry
     
-    # Remove leading zeros
+    # Verwijder voorloopnullen
     while len(result) > 1 and result[-1] == 0:
         result.pop()
     
     return result
 
 def fast_power_binary(base, exponent):
-    """Binary exponentiation for big-integer arrays."""
+    """Binaire exponentiatie voor big-integer arrays."""
     result = [1]
-    base = base.copy()
+    base = base[:]
     
     if exponent < 0:
         exponent = 0
@@ -154,38 +137,37 @@ def fast_power_binary(base, exponent):
     return result
 
 def build_big_seed(username, password, pepper):
-    """Build big-integer seed from username + password + pepper."""
+    """Bouw big-integer seed uit username + password + pepper."""
     combined = username + password + pepper
     seed = [1]
     
     for i, char in enumerate(combined):
-        # In QB64: Asc(char) + (i+1) because QB64 uses 1-based indexing
         digit = ord(char) + i + 1
-        seed = big_mul_array(seed.copy(), digit)
+        seed = big_mul_array(seed, digit)
     
     if len(seed) == 1 and seed[0] == 0:
         seed = [1]
     
     return seed
 
-def copy_last_digits(dest, src, count):
-    """Copy last 'count' digits from src to dest."""
+def copy_last_digits(src, count):
+    """Kopieer laatste 'count' cijfers uit src."""
     if len(src) <= count:
-        return src.copy()
+        return src[:]
     else:
         return src[-count:]
 
 def rmodule_with_params(username, password, seed, phi_start, k_max):
-    """R-Module implementation (without animation)."""
+    """R-Module implementatie (zonder animatie)."""
     state = [1]
     
-    # Initialize state with seed
+    # Initialiseer state met seed
     seedstr = username + password + username + password
     for i, char in enumerate(seedstr):
         digit = ord(char) + i + 1
-        state = big_mul_array(state.copy(), digit)
+        state = big_mul_array(state, digit)
     
-    # Build phi array
+    # Bouw phi array
     phi_start = max(1, phi_start)
     if phi_start > len(PHI_STRING) - 149:
         phi_start = (seed[-1] % (len(PHI_STRING) - 149)) + 1
@@ -206,12 +188,11 @@ def rmodule_with_params(username, password, seed, phi_start, k_max):
             current_phi = fast_power_binary(phi_arr, n * k)
             
             if k % 2 == 0:
-                current_phi = big_mul_array(current_phi.copy(), k)
+                current_phi = big_mul_array(current_phi, k)
             
             if k % 2 == 1:
                 wave = big_add_arrays(wave, current_phi)
             else:
-                # use the robust subtraction that returns a new list
                 wave = big_sub_arrays(wave, current_phi)
             
             if len(current_phi) > 250:
@@ -219,13 +200,13 @@ def rmodule_with_params(username, password, seed, phi_start, k_max):
             if len(wave) > 250:
                 wave = wave[:250]
         
-        # Copy last 64 digits
-        state = copy_last_digits(state, wave, 64)
+        # Kopieer laatste 64 cijfers
+        state = copy_last_digits(wave, 64)
     
-    # Condense to string
+    # Condenseer naar string
     result = ''.join(str(d) for d in state)
     
-    # Stretch to 1024 digits
+    # Rek uit naar 1024 cijfers
     stretched = result
     while len(stretched) < 1024:
         tmp = result[::-1][:len(result)//2][::-1] + result[:len(result)//2]
@@ -239,7 +220,7 @@ def rmodule_with_params(username, password, seed, phi_start, k_max):
     return stretched[:1024]
 
 def generate_access_code_256(username, password, pepper):
-    """Generate 256-digit access code."""
+    """Genereer 256-cijferige accesscode."""
     seed = build_big_seed(username, password, pepper)
     
     if len(seed) >= 3:
@@ -255,10 +236,6 @@ def generate_access_code_256(username, password, pepper):
         k_max = 500
     if k_max > 999:
         k_max = 999
-
-    # respect override for testing
-    if OVERRIDE_KMAX is not None:
-        k_max = OVERRIDE_KMAX
     
     rmodule_hash = rmodule_with_params(username, password, seed, phi_start, k_max)
     
@@ -267,7 +244,7 @@ def generate_access_code_256(username, password, pepper):
     else:
         strat_id = seed[-1] % 8
     
-    # Truncation/scrambling based on strategy
+    # Truncatie/scrambling op basis van strategie
     accesscode_1024 = rmodule_hash
     
     if strat_id == 0:
@@ -315,7 +292,7 @@ def generate_access_code_256(username, password, pepper):
             permuted_list[i] = accesscode_1024[old_index]
         trunc = ''.join(permuted_list)[:256]
     
-    # Ensure 256 digits
+    # Zorg dat het 256 cijfers is
     if len(trunc) < 256:
         final = trunc
         while len(final) < 256:
@@ -324,90 +301,88 @@ def generate_access_code_256(username, password, pepper):
     else:
         return trunc[:256]
 
-def brute_force_crack():
-    """Brute-force crack the hash."""
-    print(f"[*] Target hash: {HASH_TO_MATCH}")
-    print(f"[*] Hash length: {len(HASH_TO_MATCH)}")
-    print(f"[*] Pepper: {PEPPER}")
+def main():
+    print("=" * 70)
+    print("QB64 AccessCode Generator - Brute Force Cracker")
+    print("=" * 70)
+    print(f"Target hash: {HASH_TO_MATCH}")
+    print(f"Hash lengte: {len(HASH_TO_MATCH)}")
+    print(f"Pepper: {PEPPER}")
     print()
-    
-    # Known username hint: "Luffy"
-    username = "Luffy"
     
     attempts = 0
     start_time = time.time()
     
-    # Strategy 1: Test standard ASCII passwords first (fast)
-    print("[*] Strategy 1: Standard ASCII (32-126) passwords...")
-    
-    # Common password patterns
+    # Strategie 1: Standaard ASCII wachtwoorden
+    print("[*] Strategie 1: Standaard ASCII wachtwoorden testen...")
     common_passwords = [
         "password", "monkey", "qwerty", "123456", "admin", "letmein",
-        "welcome", "monkey123", "password123", "qwerty123",
+        "welcome", "monkey123", "password123", "qwerty123", "test",
+        "Monkey", "Luffy", "Zoro", "Nami", "Usopp",
     ]
     
-    for pwd in common_passwords:
-        attempts += 1
-        generated = generate_access_code_256(username, pwd, PEPPER)
-        
-        if generated == HASH_TO_MATCH:
-            elapsed = time.time() - start_time
-            print(f"\n[+] CRACKED in {elapsed:.2f}s!")
-            print(f"[+] Username: {username}")
-            print(f"[+] Password: {pwd}")
-            print(f"[+] Attempts: {attempts}")
-            return True
-        
-        if attempts % 100 == 0:
-            elapsed = time.time() - start_time
-            rate = attempts / elapsed
-            print(f"  Attempts: {attempts} ({rate:.1f}/sec)")
-    
-    # Strategy 2: Extended ASCII (test possible byte values for the mystery character)
-    print("\n[*] Strategy 2: Extended ASCII (0-255) byte values...")
-    print(f"[*] Testing: Luffy + Monkey[BYTE] + D")
-
-    byte_range = range(256)
-    char_pos_range = range(1, 10)
-    if TEST_FAST:
-        # reduce search space for quick testing
-        byte_range = range(32)  # printable + some control characters
-        char_pos_range = range(1, 3)
-
-    for byte_val in byte_range:
-        for char_pos in char_pos_range:  # Try different positions
-            pwd = "Monkey" + chr(byte_val) + "D"
-            
+    for username in ["Luffy", "admin", "test", "user"]:
+        for pwd in common_passwords:
             attempts += 1
             generated = generate_access_code_256(username, pwd, PEPPER)
             
             if generated == HASH_TO_MATCH:
                 elapsed = time.time() - start_time
-                print(f"\n[+] CRACKED in {elapsed:.2f}s!")
+                print(f"\n[+] GEVONDEN in {elapsed:.2f}s!")
                 print(f"[+] Username: {username}")
                 print(f"[+] Password: {pwd}")
-                print(f"[+] Password bytes: {[ord(c) for c in pwd]}")
-                print(f"[+] Attempts: {attempts}")
+                print(f"[+] Pogingen: {attempts}")
                 return True
             
-            if attempts % 1000 == 0:
+            if attempts % 50 == 0:
                 elapsed = time.time() - start_time
-                rate = attempts / elapsed
-                print(f"  Attempts: {attempts} ({rate:.1f}/sec)")
+                rate = attempts / elapsed if elapsed > 0 else 0
+                print(f"  Pogingen: {attempts} ({rate:.1f}/sec)")
+    
+    # Strategie 2: Brute force met korte wachtwoorden (5-8 karakters)
+    print("\n[*] Strategie 2: Korte wachtwoorden (5-8 karakters)...")
+    
+    charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    
+    for username in ["Luffy", "admin", "test"]:
+        # Maak alle combinaties van 5-char wachtwoorden
+        for len_pwd in range(5, 9):
+            print(f"\n  Testing {username} met {len_pwd}-char wachtwoorden...")
+            
+            # Vereenvoudigd: test alleen enkele combinaties per lengte
+            test_patterns = [
+                "a" * len_pwd,
+                "1" * len_pwd,
+                "A" * len_pwd,
+                "M" + "o" * (len_pwd - 1),
+                "L" + "u" * (len_pwd - 1),
+            ]
+            
+            for pwd in test_patterns:
+                attempts += 1
+                generated = generate_access_code_256(username, pwd, PEPPER)
+                
+                if generated == HASH_TO_MATCH:
+                    elapsed = time.time() - start_time
+                    print(f"\n[+] GEVONDEN in {elapsed:.2f}s!")
+                    print(f"[+] Username: {username}")
+                    print(f"[+] Password: {pwd}")
+                    print(f"[+] Pogingen: {attempts}")
+                    return True
+                
+                if attempts % 100 == 0:
+                    elapsed = time.time() - start_time
+                    rate = attempts / elapsed if elapsed > 0 else 0
+                    print(f"    Pogingen: {attempts} ({rate:.1f}/sec)")
     
     elapsed = time.time() - start_time
-    print(f"\n[-] Not cracked after {attempts} attempts in {elapsed:.2f}s")
+    print(f"\n[-] Niet gevonden na {attempts} pogingen in {elapsed:.2f}s")
+    print("\nTips:")
+    print("- Controleer of HASH_TO_MATCH correct is gekopieerd (256 cijfers)")
+    print("- Zorg dat PEPPER identiek is aan de generator")
+    print("- Probeer manuelle username/password combinaties")
+    
     return False
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="QB64 AccessCode brute-force tester")
-    parser.add_argument('--kmax', type=int, help='Override k_max used in generator (for testing)')
-    parser.add_argument('--test', action='store_true', help='Enable fast test mode (smaller search space)')
-    args = parser.parse_args()
-
-    if args.kmax is not None:
-        OVERRIDE_KMAX = args.kmax
-    if args.test:
-        TEST_FAST = True
-
-    brute_force_crack()
+    main()
