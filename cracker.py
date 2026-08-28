@@ -6,10 +6,11 @@ Reverse-engineered uit de QB64 generator en verificator
 
 import time
 import sys
+from itertools import product
 
 # Constanten (moet identiek zijn aan generator/verificator)
 PEPPER = "MijnGeheimePepper123!@#$%^&*()_+"
-HASH_TO_MATCH = "70438247955733198465163806671242798540544038142550174908189168106997740018282659068539104889148982773815856967655255286250136057728962615359799990823187442473600712120780830500571"
+HASH_TO_MATCH = "7043824795573319846516380667124279854054403814255017490818916810699774001828265906853910488914898277381585696765525528625013605772896261535979990823187442473600712120780830500574754144547182786133542476206239204331568469384784131839436103457613200896938415"
 
 PHI_STRING = "161803398874989484820458683436563811772030917980576286213544862270526046281890244970720720418939113748475408807538689175212663386222353693179318006076672635443338908659593958290563832676030360985010748866852605239"
 
@@ -301,88 +302,123 @@ def generate_access_code_256(username, password, pepper):
     else:
         return trunc[:256]
 
-def main():
-    print("=" * 70)
-    print("QB64 AccessCode Generator - Brute Force Cracker")
-    print("=" * 70)
-    print(f"Target hash: {HASH_TO_MATCH}")
-    print(f"Hash lengte: {len(HASH_TO_MATCH)}")
-    print(f"Pepper: {PEPPER}")
-    print()
+def brute_force_common_passwords():
+    """Test veelgebruikte username/password combinaties."""
+    print("[*] Testing common username/password combinations...")
+    
+    usernames = ["Luffy", "admin", "test", "user", "root", "Admin", "Test", "User"]
+    passwords = [
+        "password", "monkey", "qwerty", "123456", "admin", "letmein",
+        "welcome", "monkey123", "password123", "qwerty123", "test",
+        "Monkey", "123", "12345", "password1", "admin123",
+        "Luffy", "Zoro", "Nami", "Usopp", "Sanji",
+    ]
+    
+    total = len(usernames) * len(passwords)
+    current = 0
+    start_time = time.time()
+    
+    for username in usernames:
+        for pwd in passwords:
+            current += 1
+            generated = generate_access_code_256(username, pwd, PEPPER)
+            
+            if generated == HASH_TO_MATCH:
+                elapsed = time.time() - start_time
+                print(f"\n[+] FOUND IN {elapsed:.2f}s!")
+                print(f"[+] Username: {username}")
+                print(f"[+] Password: {pwd}")
+                print(f"[+] Attempts: {current}")
+                return (username, pwd)
+            
+            if current % 50 == 0:
+                elapsed = time.time() - start_time
+                rate = current / elapsed if elapsed > 0 else 0
+                pct = (current / total) * 100
+                print(f"  Progress: {current}/{total} ({pct:.1f}%) - {rate:.1f}/sec")
+    
+    elapsed = time.time() - start_time
+    print(f"[-] Not found in common passwords ({current} attempts in {elapsed:.2f}s)")
+    return None
+
+def brute_force_charset(usernames, length, charset, max_attempts=10000):
+    """Test wachtwoorden van gegeven lengte met gegeven charset."""
+    print(f"\n[*] Testing {length}-char passwords with {len(charset)} chars...")
     
     attempts = 0
     start_time = time.time()
     
-    # Strategie 1: Standaard ASCII wachtwoorden
-    print("[*] Strategie 1: Standaard ASCII wachtwoorden testen...")
-    common_passwords = [
-        "password", "monkey", "qwerty", "123456", "admin", "letmein",
-        "welcome", "monkey123", "password123", "qwerty123", "test",
-        "Monkey", "Luffy", "Zoro", "Nami", "Usopp",
-    ]
+    def generate_combinations(length, charset, max_attempts):
+        """Generator voor kombinaties tot max_attempts."""
+        count = 0
+        for combo in product(charset, repeat=length):
+            if count >= max_attempts:
+                break
+            yield ''.join(combo)
+            count += 1
     
-    for username in ["Luffy", "admin", "test", "user"]:
-        for pwd in common_passwords:
+    for username in usernames:
+        print(f"  Testing username: {username}")
+        for pwd in generate_combinations(length, charset, max_attempts):
             attempts += 1
             generated = generate_access_code_256(username, pwd, PEPPER)
             
             if generated == HASH_TO_MATCH:
                 elapsed = time.time() - start_time
-                print(f"\n[+] GEVONDEN in {elapsed:.2f}s!")
+                print(f"\n[+] FOUND IN {elapsed:.2f}s!")
                 print(f"[+] Username: {username}")
                 print(f"[+] Password: {pwd}")
-                print(f"[+] Pogingen: {attempts}")
-                return True
+                print(f"[+] Attempts: {attempts}")
+                return (username, pwd)
             
-            if attempts % 50 == 0:
+            if attempts % 500 == 0:
                 elapsed = time.time() - start_time
                 rate = attempts / elapsed if elapsed > 0 else 0
-                print(f"  Pogingen: {attempts} ({rate:.1f}/sec)")
-    
-    # Strategie 2: Brute force met korte wachtwoorden (5-8 karakters)
-    print("\n[*] Strategie 2: Korte wachtwoorden (5-8 karakters)...")
-    
-    charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    
-    for username in ["Luffy", "admin", "test"]:
-        # Maak alle combinaties van 5-char wachtwoorden
-        for len_pwd in range(5, 9):
-            print(f"\n  Testing {username} met {len_pwd}-char wachtwoorden...")
-            
-            # Vereenvoudigd: test alleen enkele combinaties per lengte
-            test_patterns = [
-                "a" * len_pwd,
-                "1" * len_pwd,
-                "A" * len_pwd,
-                "M" + "o" * (len_pwd - 1),
-                "L" + "u" * (len_pwd - 1),
-            ]
-            
-            for pwd in test_patterns:
-                attempts += 1
-                generated = generate_access_code_256(username, pwd, PEPPER)
-                
-                if generated == HASH_TO_MATCH:
-                    elapsed = time.time() - start_time
-                    print(f"\n[+] GEVONDEN in {elapsed:.2f}s!")
-                    print(f"[+] Username: {username}")
-                    print(f"[+] Password: {pwd}")
-                    print(f"[+] Pogingen: {attempts}")
-                    return True
-                
-                if attempts % 100 == 0:
-                    elapsed = time.time() - start_time
-                    rate = attempts / elapsed if elapsed > 0 else 0
-                    print(f"    Pogingen: {attempts} ({rate:.1f}/sec)")
+                print(f"    Attempts: {attempts} ({rate:.1f}/sec)")
+        
+        if attempts >= max_attempts:
+            break
     
     elapsed = time.time() - start_time
-    print(f"\n[-] Niet gevonden na {attempts} pogingen in {elapsed:.2f}s")
-    print("\nTips:")
-    print("- Controleer of HASH_TO_MATCH correct is gekopieerd (256 cijfers)")
-    print("- Zorg dat PEPPER identiek is aan de generator")
-    print("- Probeer manuelle username/password combinaties")
+    print(f"[-] Not found in this batch ({attempts} attempts in {elapsed:.2f}s)")
+    return None
+
+def main():
+    print("=" * 70)
+    print("QB64 AccessCode Generator - Brute Force Cracker")
+    print("=" * 70)
+    print(f"Target hash: {HASH_TO_MATCH[:50]}...")
+    print(f"Hash lengte: {len(HASH_TO_MATCH)}")
+    print(f"Pepper: {PEPPER}")
+    print()
     
-    return False
+    # Strategie 1: Common passwords
+    result = brute_force_common_passwords()
+    if result:
+        print(f"\n[SUCCESS] Credentials: {result[0]} / {result[1]}")
+        return
+    
+    # Strategie 2: Brute-force korte passwords (5-7 chars)
+    usernames = ["Luffy", "admin", "test", "user"]
+    charset_lower = "abcdefghijklmnopqrstuvwxyz"
+    charset_mixed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    charset_alphanum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    
+    for length in range(5, 8):
+        result = brute_force_charset(usernames, length, charset_alphanum, max_attempts=5000)
+        if result:
+            print(f"\n[SUCCESS] Credentials: {result[0]} / {result[1]}")
+            return
+    
+    print("\n[!] Cracking completed without finding credentials.")
+    print("    Consider:")
+    print("    - Increasing search space (more characters, longer passwords)")
+    print("    - Testing with known partial credentials")
+    print("    - Checking if HASH_TO_MATCH and PEPPER are correct")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n[!] Interrupted by user")
+        sys.exit(0)
