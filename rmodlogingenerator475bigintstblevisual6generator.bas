@@ -2,6 +2,10 @@
 ' ACCESS CODE GENERATOR - GRAFISCHE VERSIE (SCREEN 12)
 ' MET BIG-INTEGER SEED EN PEPPER
 ' Copyright (C) R.T.Somer
+'
+' Big-integer basisroutines gebaseerd op de BigInt-library van
+' PetesQBSite (http://www.petesqbsite.com/downloads/bigint.zip),
+' oorspronkelijk geschreven door Deus Ex Machina.
 ' ==============================================================
 
 ' 1. GLOBALE VARIABELEN & CONSTANTEN
@@ -609,7 +613,7 @@ Function RModuleWithParams$ (username As String, password As String, seed_arr() 
 
     pCount = 0
     Cls
-    Locate 1, 20: Print "R-MODULE ACTIVE – 12 UNIVERSA WORDEN GEBOREN"
+    Locate 1, 20: Print "R-MODULE ACTIVE Â– 12 UNIVERSA WORDEN GEBOREN"
     Locate 2, 1: Print "Seed lengte: "; seed_len; " Phi Start: "; phi_start; " k_max: "; k_max
 
     For r = 20 To ANIM_RADIUS Step 18
@@ -646,7 +650,7 @@ Function RModuleWithParams$ (username As String, password As String, seed_arr() 
 
     input_len = Len(username) + Len(password)
 
-    ' === HOOFDLOOP – 12 universa ===
+    ' === HOOFDLOOP Â– 12 universa ===
     Dim wave_local(1 To 500) As Integer, current_phi_local(1 To 500) As Integer
     For n = 1 To 12
         For i = 1 To 500: wave_local(i) = 0: Next
@@ -681,7 +685,7 @@ Function RModuleWithParams$ (username As String, password As String, seed_arr() 
             _Display: _Limit 90
         Next
 
-        ' === CopyLastDigits – groene laser ===
+        ' === CopyLastDigits Â– groene laser ===
         For i = 1 To 64
             If i <= wave_len Then
                 x2pos = ANIM_CENTER_X + ANIM_RADIUS + 60
@@ -731,7 +735,7 @@ Function RModuleWithParams$ (username As String, password As String, seed_arr() 
         _Display: _Delay 0.0038
     Next
 
-    Locate 29, 18: Print "KLAAR – TERUG NAAR GUI..."
+    Locate 29, 18: Print "KLAAR Â– TERUG NAAR GUI..."
     _Display
     Sleep 2
 
